@@ -37,6 +37,72 @@
             # Arduino Programming
           </script>
         </section>
+        <section data-markdown>
+          <script type="text/template">
+            ### The creators
+
+- Interactive Design Institute Ivrea
+- graduated 80 students from 2001 to 2005
+
+<img src="screen_ivrea-institute.png" style="height: 300px;">
+<img src="screen_arduino-team.png" style="height: 300px;">
+<h1 class="absolute-element" style="position: absolute; z-index: 4; left: -180px; top: 0px;">
+  <img src="screen_ivrea-on-map.png" style="height: 300px;">
+</h1>
+          </script>
+        </section>
+        <section data-markdown>
+          <script type="text/template">
+            ### Open schmeatics
+<img src="screen_arduino-schematic.png" style="height: 500px;">
+<h1 class="absolute-element" style="position: absolute; z-index: 4; left: -260px; top: 0px;">
+  <img src="screen_arduino-pcb.png" style="height: 300px;">
+</h1>
+          </script>
+        </section>
+        <section data-markdown>
+          <script type="text/template">
+            ### Applications
+            [tokyo geiger shield](http://tokyohackerspace.org/en/blog/tokyo-hackerspacerdtn-geiger-shield-dev-history)
+<img src="geiger_enclosure%20003.jpg" style="height: 500px;">
+
+[TED talk](https://www.youtube.com/watch?v=UoBUXOOdLXY) with more applications
+          </script>
+        </section>
+        <section data-markdown>
+          <script type="text/template">
+            ### ten ways to destroy an arduino
+
+[rugged circuits](http://ruggedcircuits.com/html/ancp01.html)
+
+<h1 class="absolute-element" style="position: absolute; z-index: 4; left: -320px; top: 0px;">
+  <img src="method01.gif" style="height: 300px;">
+</h1>
+
+
+- Shorting I/O Pins to Ground
+
+- Shorting I/O Pins to Each Other
+
+- Apply Overvoltage to I/O Pins
+
+- Apply External Vin Power Backwards
+
+- Apply >5V to the 5V Connector Pin
+
+- Apply >3.3V to the 3.3V Connector Pin
+
+- Short Vin to GND
+
+- Apply 5V External Power with Vin Load
+
+- Apply >13V to Reset Pin
+
+- Exceed Total Microcontroller Current
+
+          </script>
+        </section>
+
         <section data-markdown><script type="text/template">
             ### Variable declaration
 ```C
@@ -99,8 +165,8 @@ if (camera_on_p && display_on_p)  // also || for boolean comparison
 ### Loops
 ```C
 while(camera_on_p){
-  capture_image()
-  delay(20);
+    capture_image()
+    delay(20);
 }
 ```
 ```C
@@ -113,7 +179,7 @@ for(i = 2; i < 4; i++){
 - in time critical code a for-loop can be problematic
 ```C
 for(i = 0; i < current_line; i++){
-  delayMicroseconds(100);
+    delayMicroseconds(100);
 }
 ```
 - above code waits a few instructions even for current_line=0
@@ -218,7 +284,7 @@ float array_max(float*buf,int len)
 #include "wavetable.h" // insert a file from current directory
 #include <SPI.h>       // insert a file from system directory
 #define NSAMPLES 450
-#define len(a) (sizeof(a)/sizeof(a[0]))  // be generous with parenthesis
+#define len(a) (sizeof(a)/sizeof(a[0])) // be generous with parenthesis!
 ```
 ```C
 int i;
@@ -258,6 +324,15 @@ void loop()
     sleep(100);
 }
 ```
+</script></section>
+<section data-markdown><script type="text/template">
+### Memory
+
+- [http://arduino.cc/en/Tutorial/Memory](http://arduino.cc/en/Tutorial/Memory)
+- Flash  32k bytes  (program space)
+- SRAM   2k bytes   (variables)
+- EEPROM 1k byte    (long-term information)
+
 </script></section>
 <section data-markdown><script type="text/template">
 </script></section>
@@ -352,6 +427,9 @@ void loop()
 </script></section>
 <section data-markdown><script type="text/template">
 ## File: SPI_serial.ino
+
+* source is on [github](https://github.com/plops/arduino-stage-trigger-gen)
+
 ```C
 /************************/
 /* Define substitutions */
@@ -1089,6 +1167,97 @@ byte stopY[] = {2, 2};         // How many X scans to remain on Y turn position
 </section>
 <section>
 <section data-markdown><script type="text/template">
+    ### Regenerating VSYNC signal
+    - my first non-toy Arduino code
+    - [on github](https://github.com/plops/arduino)
+
+```C
+// takes the lcos signal (train of 24 pulses, followed by a pause)
+// and generates a trigger signal for the mma at the end of each train
+// so for every DVI image (consisting of 24 bit planes) a different
+// mma image can be shown.
+// I used to trigger the mma more often but then I could only use 11 of
+// the 24 bit planes, loosing substantial intensity
+
+volatile unsigned int Ticks; // holds the pulse count as .5 us ticks
+// pin 8 takes signal from lcos
+char icpPin=8; // this interrupt handler must use pin 8
+volatile char bit_plane_change=0; // incremented whenever a different bitplane is displayed
+char mma=13; // output towards mma
+
+ISR(TIMER1_CAPT_vect){
+  if( !bit_is_set(TCCR1B ,ICES1)) // was rising edge detected ?
+       TCNT1 = 0; // reset the counter
+  else { // falling edge was detected
+       Ticks = ICR1;
+       if(Ticks>1000){
+             bit_plane_change=0;
+       }
+  }
+  TCCR1B ^= _BV(ICES1); // toggle bit value to trigger on the other edge
+  if(bit_plane_change==47){
+       digitalWrite(mma,HIGH);
+  }else if (bit_plane_change==0){
+       digitalWrite(mma,LOW);
+  }
+  bit_plane_change++;
+}
+
+void setup() // run once, when the sketch starts
+{
+  //Serial.begin(115200);
+  pinMode(icpPin,INPUT);
+  pinMode(mma,OUTPUT);
+  TCCR1A = 0x00; // COM1A1=0, COM1A0=0 => Disconnect Pin OC1 from Timer/Counter 1 -- PWM11=0,PWM10=0 => PWM Operation disabled
+  TCCR1B = 0x02; // 16MHz clock with prescaler means TCNT1 increments every .5 uS (cs11 bit set
+  Ticks = 0; // default value indicating no pulse detected
+  TIMSK1 = _BV(ICIE1); // enable input capture interrupt for timer 1
+}
+
+int getTick() {
+  int akaTick; // holds a copy of the tick count so we can return it after re-enabling interrupts
+  cli(); // disable interrupts
+  akaTick = Ticks;
+  sei(); // enable interrupts
+  return akaTick;
+}
+
+char get_plane_change()
+{
+  int aka;
+  cli();
+  aka=bit_plane_change;
+  sei();
+  return aka;
+}
+
+void loop() // run over and over again
+{
+}
+```
+</script></section>
+<section data-markdown><script type="text/template">
+```
+for i in {0..11}
+do
+if [ $i != 0 ]
+then
+    echo "else";
+fi
+    echo " if (bit_plane_change==$((4*i))){
+    digitalWrite(light,HIGH);
+} else if (bit_plane_change==$((4*i+1))){
+    digitalWrite(light,LOW);
+    digitalWrite(mma,HIGH);
+} else if (bit_plane_change==$((4*i+2))){
+    digitalWrite(mma,LOW);
+}"
+done
+```
+</script></section>
+</section>
+
+<section data-markdown><script type="text/template">
 # Tips (1/2)
 - think hard before buying a device
     - if you want to be fast, make sure there are enough ports, e.g. trigger-in and ready-out
@@ -1097,11 +1266,68 @@ byte stopY[] = {2, 2};         // How many X scans to remain on Y turn position
     - timers can turn ugly fast (you will have to read the AVR manuals and code will be much more difficult to maintain)
 - use comments to document tricks (e.g. sleep mode in my code)
 </script></section>
+
+<section>
 <section data-markdown><script type="text/template">
 # Tips (2/2)
 - use Matlab to generate code (don't use "for"-loops in time-critical code)
 - get familiar with logic analyzer and oscilloscope
 - (look at disassembly)
+</script></section>
+<section data-markdown><script type="text/template">
+# A simple sketch Arduino sketch
+
+
+```C
+void setup() {
+  pinMode(13, OUTPUT);
+}
+
+void loop() {
+  digitalWrite(13, HIGH);   // set the LED on
+  delay(1000);              // wait for a second
+  digitalWrite(13, LOW);    // set the LED off
+  delay(1000);              // wait for a second
+}
+```
+[Description of procedure in Windows](http://ucexperiment.wordpress.com/2012/02/21/arduino-assembly-language-listing-of-compiled-sketch-windows/)
+
+
+</script></section>
+<section data-markdown><script type="text/template">
+# Disassembly of Arduino sketch
+```
+void loop() {
+  digitalWrite(13, HIGH);   // set the LED on
+  fa:   8d e0           ldi r24, 0x0D   ; 13
+  fc:   61 e0           ldi r22, 0x01   ; 1
+  fe:   12 d1           rcall   .+548       ; 0x324 <digitalWrite>
+  delay(1000);              // wait for a second
+ 100:   68 ee           ldi r22, 0xE8   ; 232
+ 102:   73 e0           ldi r23, 0x03   ; 3
+ 104:   80 e0           ldi r24, 0x00   ; 0
+ 106:   90 e0           ldi r25, 0x00   ; 0
+ 108:   53 d0           rcall   .+166       ; 0x1b0 <delay>
+  digitalWrite(13, LOW);    // set the LED off
+ 10a:   8d e0           ldi r24, 0x0D   ; 13
+ 10c:   60 e0           ldi r22, 0x00   ; 0
+ 10e:   0a d1           rcall   .+532       ; 0x324 <digitalWrite>
+  delay(1000);              // wait for a second
+ 110:   68 ee           ldi r22, 0xE8   ; 232
+ 112:   73 e0           ldi r23, 0x03   ; 3
+ 114:   80 e0           ldi r24, 0x00   ; 0
+ 116:   90 e0           ldi r25, 0x00   ; 0
+}
+ 118:   4b c0           rjmp    .+150       ; 0x1b0 <delay>
+
+0000011a <setup>:
+void setup() {
+  pinMode(13, OUTPUT);
+ 11a:   8d e0           ldi r24, 0x0D   ; 13
+ 11c:   61 e0           ldi r22, 0x01   ; 1
+}
+ 11e:   dc c0           rjmp    .+440       ; 0x2d8 <pinMode>
+```
 </script></section>
 </section>
 	<section>
