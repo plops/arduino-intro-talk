@@ -325,15 +325,76 @@ void loop()
 }
 ```
 </script></section>
+<section>
 <section data-markdown><script type="text/template">
 ### Memory
 
 - [http://arduino.cc/en/Tutorial/Memory](http://arduino.cc/en/Tutorial/Memory)
+
 - Flash  32k bytes  (program space)
+
 - SRAM   2k bytes   (variables)
+
 - EEPROM 1k byte    (long-term information)
 
 </script></section>
+<section data-markdown><script type="text/template">
+    ### Pointers to data in SRAM
+
+```C
+int a = 3;
+void inc(int*val){ val[0]++; }
+void inc(int*val){ (*val)++; }  // identical
+inc(a);  // => a = 4
+int b = 5;
+inc(&b); // => b = 6
+```
+
+```C
+int a[3] = {1,2,3};
+void inc(int*val,int n){ while(n--) val[n]++; }
+void inc(int*val,int n){ while(n--) (*val+n)++; }  // identical
+inc(a,sizeof(a)/sizeof(*a));  // => a = {2,3,4}
+inc(a,sizeof(a)/sizeof(a[0]));  // => a = {3,4,5}
+inc(a,len(a));  // => a = {4,5,6}, len(a) is a preprocessor macro
+```</script></section>
+<section data-markdown><script type="text/template">
+    ### Pointers to data in Flash memory
+
+- [PROGMEM in reference](http://www.arduino.cc/en/Reference/PROGMEM)
+
+```C
+<avr/pgmspace.h>
+prog_uchar signMessage[] PROGMEM  = {"I AM PREDATOR,  UNSEEN COMBATANT. CREATED BY THE UNITED STATES DEPART"};
+```
+
+- you have to read back the data from Flash into SRAM in order to use it
+
+- Flash can only be written 10000 times
+
+
+
+- you can also write to flash but this is dangerous
+[http://www.nongnu.org/avr-libc/user-manual/group__avr__boot.html](http://www.nongnu.org/avr-libc/user-manual/group__avr__boot.html)
+
+- one might destroy the bootloader (but could be repaired with second Arduino)
+
+</script></section>
+<section data-markdown><script type="text/template">
+    ### Store data in EEPROM memory
+
+- you can write and read data
+
+- data is safe during power cycles
+
+- 100000 write cycles of EEPROM memory
+
+- [http://www.nongnu.org/avr-libc/user-manual/group__avr__eeprom.html](http://www.nongnu.org/avr-libc/user-manual/group__avr__eeprom.html)
+
+- write one byte at a time
+
+</script></section>
+</section>
 <section data-markdown><script type="text/template">
 </script></section>
         <section>
