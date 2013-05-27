@@ -1,0 +1,1148 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+
+    <title>reveal.js - The HTML Presentation Framework</title>
+
+    <meta name="description" content="Introduction to Arduino">
+    <meta name="author" content="Martin Kielhorn">
+
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+    <link rel="stylesheet" href="css/reveal.min.css">
+    <link rel="stylesheet" href="css/theme/default.css" id="theme">
+
+    <!-- For syntax highlighting -->
+    <link rel="stylesheet" href="lib/css/zenburn.css">
+
+    <!-- If the query includes 'print-pdf', use the PDF print sheet -->
+    <script>
+      document.write( '<link rel="stylesheet" href="css/print/' + ( window.location.search.match( /print-pdf/gi ) ? 'pdf' : 'paper' ) + '.css" type="text/css" media="print">' );
+    </script>
+
+    <!--[if lt IE 9]>
+	<script src="lib/js/html5shiv.js"></script>
+	<![endif]-->
+  </head>
+  <body>
+    <div class="reveal">
+      <!-- Any section element inside of this container is displayed as a slide -->
+      <div class="slides">
+        <section data-markdown>
+          <script type="text/template">
+            # Arduino Programming
+          </script>
+        </section>
+        <section data-markdown><script type="text/template">
+            ### Variable declaration
+```C
+byte a;
+byte b = 4;
+unsigned int c = 1339;
+float offset = 1.03e3;
+byte serialbuffer[34];
+float gain[]={1.31,1.23,2.9};
+```
+
+```C
+a = b;
+a = c; // problematic:  a => 1339%255 (modulo)
+c = a; // okay:
+offset = c; // okay
+serialbuffer[3] = b;
+gain[0] = offset*2.0;  // note that this is slow
+```
+
+```C
+a = 4/3;          // => a = 1
+a = 4/3 + 2/3;    // => a = 1  (problematic)
+a = (byte) (4.0/3 + 2.0/3); // => a = 2
+```
+          </script></section>
+
+<section data-markdown><script type="text/template">
+### Conditionals
+```C
+if(4 == b){  // use this order if you could confuse == and =
+  b = b+3;
+  offset = offset / b;
+}
+```
+```C
+if(4 == b)  // also < > <= >= for numerical comparison
+  offset /= b+3;
+```
+```C
+if(4 == b){
+  c = 5;
+} else if (3 == b) {
+  c = 0;
+} else {
+  c = 1;
+}
+```
+```C
+c = (3==b)?0:1;
+```
+```C
+byte camera_on_p = 0, display_on_p=1;
+if (camera_on_p && display_on_p)  // also || for boolean comparison
+  capture_image();
+```
+</script></section>
+<section>
+<section data-markdown><script type="text/template">
+### Loops
+```C
+while(camera_on_p){
+  capture_image()
+  delay(20);
+}
+```
+```C
+int i;
+for(i = 2; i < 4; i++){
+// send over SPI byte by byte to the DA converter
+  SPI.transfer(serialbuffer[i]);
+}
+```
+- in time critical code a for-loop can be problematic
+```C
+for(i = 0; i < current_line; i++){
+  delayMicroseconds(100);
+}
+```
+- above code waits a few instructions even for current_line=0
+</script></section>
+<section data-markdown><script type="text/template">
+### Ondrej's Matlab code
+- import data from logic analyzer into Matlab
+
+```Matlab
+% import the D:/Ondrej/LineScanTrace_sample_numberBiggerSampleSize2.csv with File->Import Data
+% the data contains the time whenever any of the channels changes
+% find the indexes where the camera is going low (the end of an integration) (it is always followed by the trigger pulse)
+indexCameraZero=find(data(:,2)==0);
+
+% get the times when an integration starts
+trigger_start=data(indexCameraZero(1:end-1)+1,1);
+
+% get the times when the first pulse after an integration is generated
+first_pulse=data(indexCameraZero(1:end-2)+2,1);
+
+% get the time between the trigger step and the first pulse
+first_delay=first_pulse-trigger_start(1:end-1);
+
+% the data was sampled with 5 MHz
+% the fluctuations are at most three samples
+% which is 600ns
+
+% there is one bigger gap between 1st and 2nd wavefront -22*200=-4400ns
+% (2% of the pulse width 203.6 us) and one large overlap
+% between the last and the first of 152*200=30400ns. (14% of the pulse width)
+% This is very reproducible (within the maximum fluctuation of 2 sampes(400ns))
+% over different phase trains during one or different measurements.
+```
+</script></section>
+</section>
+<section data-markdown><script type="text/template">
+### Functions and Function calls (1/2)
+```C
+void ioinit (void)
+{
+    pinMode(13, OUTPUT);
+}
+
+```
+
+- ioinit() calls code inside, gets no parameters and does not return a result
+
+
+```C
+void moveY(unsigned int pos)
+{
+    PORTA=lowByte(pos);
+    PORTC=highByte(pos);
+    PORTL=B10101111;        // CS one  and A0,A1,A2 = 010  W27.1
+    PORTL=B00101111;        // CS zero and A0,A1,A2 = 010  W27.1
+    PORTL=B11111110;
+    PORTL=B11111111;
+}
+```
+
+- moveY(200) receives one parameter but does not return a value
+</script></section>
+<section data-markdown><script type="text/template">
+### Functions and Function calls (2/2)
+
+
+```C
+byte twice(byte a)
+{
+  return a*a;
+}
+```
+```C
+b=twice(5); // => b=10
+```
+
+- two functions with multiple parameters:
+
+```C
+byte checksum(byte*buf,int len)
+{
+      int i,sum=0;
+      for(i=0;i<len;i++)
+        sum+=buf[i];
+      return sum;
+}
+```
+```C
+float array_max(float*buf,int len)
+{
+      int i;
+      float max_val=buf[0];
+      for(i=1;i<len;i++)
+        max_val=(buf[i]>max_val)?buf[i]:max_val;
+      return max_val;
+}
+```
+</script></section>
+<section data-markdown><script type="text/template">
+### Preprocessor Macros
+```C
+#include "wavetable.h" // insert a file from current directory
+#include <SPI.h>       // insert a file from system directory
+#define NSAMPLES 450
+#define len(a) (sizeof(a)/sizeof(a[0]))  // be generous with parenthesis
+```
+```C
+int i;
+for(i=0;i<NSAMPLES;i++)
+      ...
+```
+```C
+float gains[]={2.3,4.2,3.3,2.1,2.3,3.1};
+int i;
+for(i=0;i<len(gains);i++)
+     ...
+```
+### Alternative: Enum
+```C
+enum { N = 450 };
+```
+</script></section>
+<section data-markdown><script type="text/template">
+### general structure of Arduino program
+```C
+byte pin_shutter = 2, pin_out=13;
+void setup()
+{
+    pinMode(pin_out,OUTPUT);
+    pinMode(pin_shutter,INPUT);
+    attachInterrupt(0,shutter_in,RISING);
+}
+void shutter_in()  // this function gets called at edge on pin 2
+{
+    digitalWrite(pin_out, HIGH);
+}
+void loop()
+{
+    digitalWrite(pin_out, HIGH);
+    sleep(100);
+    digitalWrite(pin_out, LOW);
+    sleep(100);
+}
+```
+</script></section>
+<section data-markdown><script type="text/template">
+</script></section>
+        <section>
+          <section data-markdown>
+            <script type="text/template">
+              ## LED control example
+
+              - Camera triggers Arduino 2ms before each exposure (using shutter-out)
+              - Arduino then generates triggers for the displays and LED driver
+              - I use a library to talk to the LED driver
+              [TLC5916](https://bitbucket.org/spirilis/tlc5917)
+
+```C
+#include <SPI.h>
+#include <avr/sleep.h>
+#include <TLC5917.h>
+
+TLC5917 *t;
+byte a=0xff,b=127;
+
+const byte pin_shutter=2, // interrupt 0
+           pin_mma=3,     // output towards micro-mirror array
+           pin_lcos=4;    // output towards ForthDD display
+```
+</script></section>
+<section data-markdown><script type="text/template">
+- setup() gets called once during power-up.
+```C
+void setup()
+{
+    t= new TLC5917(1,13,10,9); // pins interfacing LED driver
+    t->begin();
+    t->config(1,1);
+    t->enable();
+    t->writeLEDs(&b);
+    pinMode(pin_shutter,INPUT);
+    pinMode(pin_mma,OUTPUT);
+    pinMode(pin_lcos,OUTPUT);
+}
+```
+- shutter_in() gets called 2ms before camera integrates
+```C
+void shutter_in() {}
+```
+</script></section>
+<section data-markdown><script type="text/template">
+- Arduino sleeps most of the time
+- it is only busy after a trigger from the camera
+```C
+void sleep_now()
+{
+    set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+    sleep_enable();
+    attachInterrupt(0,shutter_in,RISING);
+    sleep_mode();  // this puts arduino to sleep
+    sleep_disable();
+    detachInterrupt(0); // first thing after wake-up
+}
+```
+</script></section>
+<section data-markdown><script type="text/template">
+- loop() only runs once after each interrupt
+- PORTD=B00001000 is faster than digitalWrite(pin_mma,HIGH) (no read necessary)
+- PORTD contains pin 3 and 4 [PortManipulation](http://www.arduino.cc/en/Reference/PortManipulation)
+``` C
+void loop()
+{
+    sleep_now();
+    delayMicroseconds(100);             PORTD=B00001000;
+    delayMicroseconds(50);              PORTD=B00000000;
+    delayMicroseconds(940-396-100-50);  PORTD=B00010000;
+    delayMicroseconds(50);              PORTD=B00000000;
+    delayMicroseconds(396-50);
+    t->enable();
+    delay(19);  delayMicroseconds(971);
+    t->disable();
+}
+```
+- I measured the times using a photodiode and an oscilloscope
+</script></section>
+</section>
+<section>
+<section data-markdown><script type="text/template">
+## Jakub's stage control code
+* one Arduino sends move commands to the stage (easy part), the scan volume (x,y,z) is hard-coded
+* second Arduino monitors stage position and generate triggers at pre-programmed distances
+    - its look-up tables (only X) are in RAM
+    - its code is much more complex (RS232 communication, checksums, control of lasers, camera)
+
+* With Arduino Due, one can use RAM for both Arduino's, the LUT of positions would fit into the RAM
+</script></section>
+<section data-markdown><script type="text/template">
+## File: SPI_serial.ino
+```C
+/************************/
+/* Define substitutions */
+/************************/
+#define RESET_TIMER2 TCNT2 = countStart
+#include "SPI.h"
+/***********************************/
+/* Define constants in the program */
+/***********************************/
+// define pins
+const byte ss = 53;            // ~SYNC signal pin number for SPI
+const byte overflowInt = 5;    // Overflow interrupt 5 on pin 18
+const byte overflowPin = 18;   // Overflow interrupt pin number
+const byte reverseDirInt = 4;  // Change direction interrupt 4 on pin 19
+const byte reverseDirPin = 19; // Change direction pin number
+const byte moveOnOffInt = 2;   // Stage moving interrupt 2 on pin 21
+const byte moveOnOffPin = 21;  // Stage moving interrupt pin number
+const byte cameraReadyPin = 20;// Camera shutter pin
+//const byte tcnt2 = 240;      // Camera trigger pulse length timer value
+const byte extTrigPin = 4;     // External trigger pin
+
+/***********************************/
+/* Define variables in the program */
+/***********************************/
+// 34 byte long buffer storing serial data
+byte serialbuffer[34];
+// Serial FIFO index
+byte in = 0;
+// Serial transfer length (up to 32 bytes) plus 2.
+// For transfer of 4 bytes, serlen should be 4+2=6.
+byte serlen = 0;
+// counting index for Waveform buffer transfer
+unsigned int inW = 0;
+// length of the waveform
+unsigned int waveL = 0;
+// length of the waveform minus 1
+unsigned int waveL0 = 0;
+// waveform storage buffer
+unsigned int waveform[1024];
+// general counting index
+unsigned int i = 0;
+
+// enable automatic update of DA enable
+byte enDAmanual = 0;
+
+// value of automatic update of DA enable
+byte manDA;
+// value of automatic update of DA enable
+byte autoDA[8];
+// counting index for automatic update
+byte autoDAin = 0;
+// number of automatic updates
+byte autoDAnum = 0;
+// DA enable register
+byte enDAauto = 0;
+
+// enable automatic update of shutter enable
+byte autoSHen = 0;
+// value of automatic update of shutter enable
+byte autoSH = 0;
+// shutter enable register
+byte enSH = 0;
+
+// Checksum for serial data
+byte cksum = 0;
+// Pixel clock counting index
+unsigned int pixel = 0;
+// Counting index for X position
+int X = 0;
+// Increasing (true) / decreasing (false) X position
+int dX = 1;
+// Immediate X position
+unsigned int Xpos = 0;
+// Flag to see if the overflow interrupt is due to direction switch
+// or due to distance travelled
+boolean CK = true;
+
+/* Timer 2 parameters */
+// we need to disable timer0. to store the TIMSK0 register value, define a byte
+byte oldtimsk0 = 0;
+// Starting count value for timer2 overflow
+byte countStart = 0;
+// Prescaler value for timer2
+byte prescaler = 1;
+
+
+void ioinit (void)
+{
+    /************************************/
+    /* Define 16-bit data port for DACs */
+    /************************************/
+    PORTA = B00000000;   // lower byte LSB(PA0, digital pin 22), MSB(PA7, digital pin 29)
+    DDRA = B11111111;    // data direction register A
+    PORTC = B00000000;   // upper byte LSB(PC0, digital pin 37), MSB(PC7, digital pin 30)
+    DDRC = B11111111;    // data direction register C
+    DDRL = B11111111;    // data direction register L
+    PORTL = B11111111;   // CS and LDAC (PL0, digital pin 49), MSB(PL7, digital pin 42)
+    DDRK = B11111111;    // data direction register K
+    PORTK = B00000000;   // disable the DA converter enable bus
+    DDRF = B11111111;    // data direction register F
+    PORTF = B00000000;   // disable the shutter converter enable bus
+
+    /* Configure control pins for SPI */
+    pinMode(ss, OUTPUT);
+    /* Configure pin 18 as input for overflow interrupt */
+    pinMode(overflowPin, INPUT);
+    /* Configure pin 19 as input for reverse direction interrupt */
+    // pinMode(reverseDirPin, INPUT);
+    /* Configure pin 20 as input camera ready input */
+    pinMode(reverseDirPin, INPUT);
+    /* Configure pin 21 as input for movement control pin */
+    pinMode(moveOnOffPin, INPUT);
+    //pinMode(A10, OUTPUT);
+    digitalWrite(ss, HIGH);
+    //digitalWrite(A10, HIGH);
+
+
+    /* Configure pin 4 as output: External trigger pulse */
+    pinMode(extTrigPin, OUTPUT);
+
+    pinMode(13, OUTPUT);
+}
+
+void initSPI(void)
+{
+    SPI.begin();
+    SPI.setBitOrder(MSBFIRST);
+}
+
+void initSERIAL(void)
+{
+    Serial.begin(9600);
+}
+
+void initTIMER(void)
+{
+    /* Timer 2 is normally not incrementing, the counting starts when the clock is enabled */
+    /* This is done by setting the prescaler: TCCR2B = B00000001;                          */
+    //Timer2 Overflow Interrupt Enable
+    TIMSK2 = B00000001;
+    // Use internal clock
+    ASSR = B00000000;
+    // Timer/Counter Control Register A
+    TCCR2A = B00000000;
+    // Timer/Counter Control Register B
+    TCCR2B = B00000000;
+    // Reset timer2
+    RESET_TIMER2;
+}
+
+/* Overflow timer function */
+ISR(TIMER2_OVF_vect)
+{
+    /* Stop the timer by stopping its clock */
+    //TIMSK2 &= ~(1<<TOIE2);
+    TCCR2B = B00000000;
+    /* reset the timer2 to the initial value */
+    RESET_TIMER2;
+
+    /* Switch off AOMs */
+    PORTK = (manDA & enDAmanual);
+    digitalWrite(extTrigPin, LOW);
+
+}
+
+void checkSum(void)
+{
+    /* Checksum from https://github.com/alvieboy/arduino-oscope/blob/master/oscope.pde
+       It makes bitwise XOR on the entire stack of data */
+    cksum = 0;
+    for (i=0;i<in;i++)
+    {
+      cksum^=serialbuffer[i];
+    }
+    Serial.write(cksum);
+    /* Octave code to calculate the checksum
+    A=[repmat('0', 5, 1) dec2bin(double('Dqwer'))]
+    W='        ';V=repmat(false,1,8);u=0;for i = 1:8;for j=1:5; u=u+1;V(i)=xor(V(i), logical(bin2dec(A(u))));end;end;for i=1:8; W(i)=dec2bin(V(i));end;W=bin2dec(W);char(W)
+    */
+}
+
+void moveX(unsigned int pos)
+{
+    PORTA=lowByte(pos);
+    PORTC=highByte(pos);
+    PORTL=B11001111;        // CS one  and A0,A1,A2 = 100  W26.1
+    PORTL=B01001111;        // CS zero and A0,A1,A2 = 100  W26.1
+    PORTL=B11111110;
+    PORTL=B11111111;
+}
+
+void incrementX(void)   // Interrupt 0 response
+{
+    /* Function to change the X position voltage to the next value */
+    if (CK)
+    {
+      //digitalWrite(13, HIGH);
+      /* Raise the external trigger pin to HIGH */
+      digitalWrite(extTrigPin, HIGH);
+
+      /* Switch on AOMs */
+      // Green LASER enabled: enDAauto = B01000000;
+      // Red LASER enabled:   enDAauto = B00100000;
+      PORTK = (manDA & enDAmanual) | (autoDA[autoDAin]);
+      autoDAin++;
+      autoDAin = autoDAin % autoDAnum;
+      TCCR2B = prescaler;
+    }
+
+    CK = true;
+
+    /* Increment to the next X position */
+    X = X + dX;
+    if (X == waveL0 | X == 0)
+    {
+      detachInterrupt(overflowInt);
+      digitalWrite(13, LOW);
+    }
+
+    /* Move X position */
+    Xpos = waveform[X];
+    moveX(Xpos);
+}
+
+void revXdir(void)      // Interrupt 1 response
+{
+    /* Function to register change of X movement direction
+       When 0, positive direction movement, when 1 negative direction
+       The other Arduino should issue 1 to pin 3 followed by zero to start from
+       from the correct initial position */
+    detachInterrupt(overflowInt);
+
+    /* Make sure that clock is not due to interrupt attachment */
+    CK = false;
+
+    /* Check if this is a RISING or FALLING edge
+       and change the upX variable accordingly */
+    if (digitalRead(reverseDirPin))
+    {
+      //digitalWrite(13, HIGH);
+      /* We are going down */
+      dX = -1;
+
+      // Counting down means we need to start from the maximum value
+      X = waveL0;
+
+      /* Move X position */
+      Xpos = waveform[X];
+      moveX(Xpos);
+
+      /* Wait 1 ms to stabilize */
+      delayMicroseconds(100);
+      //X = waveL0;
+
+      /* Activate overflow interrupt */
+      attachInterrupt(overflowInt, incrementX, RISING);
+      //CK=true;
+      // Counting down means we need to start from maximum value
+      //X = waveL0;
+
+      /* Move X position */
+      //Xpos = waveform[X];
+      //moveX(Xpos);
+    }
+    else
+    {
+      //digitalWrite(13, LOW);
+      /* We are going up */
+      dX = 1;
+
+      // Counting up means we need to start from zero
+      X = 0;
+
+      /* Move X position */
+      Xpos = waveform[X];
+      moveX(Xpos);
+
+      /* Wait 1 ms to stabilize */
+      delayMicroseconds(100);
+
+      /* Activate overflow interrupt */
+      attachInterrupt(overflowInt, incrementX, FALLING);
+    }
+}
+
+void moveOnOff(void)     // Interrupt 2 response on pin 21
+{
+    /* The other Arduino needs to issue one to pin 21 to start the pixel clock generation
+       Switch it to 0 to stop pixel clock */
+
+    if (digitalRead(moveOnOffPin))
+    {
+      oldtimsk0 = TIMSK0;
+      TIMSK0 &= B11111110;
+      attachInterrupt(reverseDirInt, revXdir, CHANGE);
+    }
+    else
+    {
+      detachInterrupt(overflowInt);
+      detachInterrupt(reverseDirInt);
+      TIMSK0 = oldtimsk0;
+    }
+  }
+
+void setup()
+{
+    ioinit();
+    initSPI();
+    initSERIAL();
+    initTIMER();
+    attachInterrupt(moveOnOffInt, moveOnOff, CHANGE);
+}
+
+void loop()
+{
+    // if we get a valid byte
+    if (Serial.available() > 0)
+    {
+      // get incoming byte:
+      serialbuffer[in] = Serial.read();
+      in++;
+      /* Read the very first byte of the serial buffer
+         It contains the length of the data transfer "serlen" */
+      if (in == 1)
+      {
+        serlen = serialbuffer[0];
+      }
+      if (in == serlen)
+      {
+        switch (serialbuffer[1])      // the second byte contains the command
+        {
+          /* if the command is D (68 in ASCII) for DAC */
+          case 68:
+            //Serial.print('A', BYTE);
+            digitalWrite(ss, LOW);      // assert ~SYNC pin low to make DA converter listen
+            for(i = 2; i < serlen; i++)  // loop through last 4 bytes of the array
+            {
+              SPI.transfer(serialbuffer[i]);// send over SPI byte by byte to the DA converter
+            }
+            digitalWrite(ss, HIGH);     // assert ~SYNC pin high to finish transfer
+            checkSum();
+            /* Checksum from https://github.com/alvieboy/arduino-oscope/blob/master/oscope.pde
+               It makes bitwise XOR on the entire stack of data
+            for (i=0;i<rsize;i++) {
+              cksum^=buf[i];
+              Serial.write(buf[i]);
+            }
+            */
+            //Serial.print('A', BYTE);    // send a capital A to acknowledge the process
+            in = 0;
+            serlen = 0;
+          break;
+
+          /* if the command is E (69 in ASCII) for Enable DAC */
+          case 69:
+            manDA = serialbuffer[2];      // ones tell, which bits are manually controlled
+            enDAmanual = serialbuffer[3]; // ones tell, which bits should be enabled
+            autoDAnum = serialbuffer[4];  // how many automatic states are there
+            for(i = 5; i < serlen; i++)   // loop through the remaining bytes of the array
+            {
+              autoDA[i-5] = serialbuffer[i]; // order, in which hardware should be switched on
+            }
+            autoDAin = 0;
+            PORTK = (manDA & enDAmanual);
+            //PORTK = enDA;
+            //Serial.print('A', BYTE);    // send a capital A to acknowledge the process
+            //Serial.write(enDA);         // send a capital A to acknowledge the process
+            checkSum();
+            in = 0;
+            serlen = 0;
+          break;
+
+          /* if the command is L (76 in ASCII) for Length of waveform */
+          case 76:
+            waveL = word(serialbuffer[2], serialbuffer[3]);
+            waveL0 = waveL-1;
+                                        // save the length of waveform that will be sent
+            inW = 0;                    // reset the waveform index to 0
+            checkSum();
+            in = 0;
+            serlen = 0;
+          break;
+
+          /* if the command is S (83 in ASCII) for Enable Shutter */
+          case 83:
+            autoSH = serialbuffer[2];
+            enSH = serialbuffer[3];
+            PORTF = (~autoSHen & enSH) | (autoSHen & autoSH);
+            checkSum();
+            in = 0;
+            serlen = 0;
+          break;
+
+          /* if the command is W (87 in ASCII) for waveform */
+          case 87:
+            for(i = 2; i < serlen; i=i+2)  // loop through the packet from byte 2 to the end in steps of two
+            {
+              // Combine the MSB and LSB byte into a 16-bit word
+              waveform[inW] = word(serialbuffer[i], serialbuffer[i+1]);
+
+              inW++;                    // increment the counting index for waveform
+              //if (inW == waveL)         // if full waveform is sent
+              //{
+              //  Serial.print('K', BYTE);
+              //}
+            }
+            checkSum();
+            if (inW == waveL)
+            {
+              /* Calculate 16-bit checksum of the waveform */
+              unsigned int cksum16 = 0;
+              for (i=0;i<waveL;i++)
+              {
+                cksum16^=waveform[i];
+              }
+              Serial.write(highByte(cksum16));
+              Serial.write(lowByte(cksum16));
+            }
+            in = 0;
+            serlen = 0;
+          break;
+
+          /* if the command is T (84 in ASCII) for Timer2 setup */
+          case 84:
+            prescaler = serialbuffer[2];
+            countStart = serialbuffer[3];
+
+            checkSum();
+            in = 0;
+            serlen = 0;
+          break;
+        }
+      }
+    }
+}
+```
+</script></section>
+<section data-markdown><script type="text/template">
+## File: microscope.ino
+```C
+#include "wavetable.h"         // table with waveforms
+/***********************************/
+/* Define constants in the program */
+/***********************************/
+// define pins
+const int dac7741_RW = 6;      // output pin for dac7741 read/~write
+const int dac7741_RST = 7;     // output pin for dac7741 DAC ~reset
+const int dac7741_RSTSEL = 8;  // output pin for dac7741 DAC ~reset select (keep high)
+const int goingupX = 13;       // output pin showing that the stage is moving in +X direction
+const int piezo = 12;          // output pin piezo
+const int cameraReadyInt = 3;  // Camera ready Interrupt on pin 20
+const int cameraReadyPin = 20; // Camera ready pin number
+const int moveOnOffPin = 21;   // on pin 21: TRUE: acquisition, FALSE: wait
+const int reverseDirPin = 3;   // Reverse/forward scan direction pin number
+
+/***********************************/
+/* Define variables in the program */
+/***********************************/
+// Timer2 reload value, globally available, defines how often the DAC is updated */
+byte tcnt2 = 10;
+int toggle = 0;
+int dX = 1;
+int dY = 1;
+int X = 0;
+int Y = 0;
+int Z = 0;
+unsigned int Xpos = 0;
+unsigned int Ypos = 0;
+unsigned int Zpos = 0;
+unsigned int i = 0;
+
+byte tY = 0;
+byte iZ = 0;
+void ioinit (void)
+{
+    /************************************/
+    /* Define 16-bit data port for DACs */
+    /************************************/
+    PORTA = B00000000;   // lower byte LSB(PA0, digital pin 22), MSB(PA7, digital pin 29)
+    DDRA = B11111111;    // data direction register A
+    PORTC = B00000000;   // upper byte LSB(PC0, digital pin 37), MSB(PC7, digital pin 30)
+    DDRC = B11111111;    // data direction register C
+    DDRL = B11111111;    // data direction register L
+    PORTL = B11111111;   // CS and LDAC (PL0, digital pin 49), MSB(PL7, digital pin 42)
+
+    /* Configure control pins for DACs */
+    pinMode(dac7741_RW, OUTPUT);
+    pinMode(dac7741_RST, OUTPUT);
+    pinMode(dac7741_RSTSEL, OUTPUT);
+
+    /* Configure the pin with the diode to output to show interrupt behavior */
+    pinMode(goingupX, OUTPUT);
+
+    /* Configure the pin with the piezo to output */
+    pinMode(piezo, OUTPUT);
+
+    /* Configure pin 21 as output telling other Arduino if scanning is active */
+    pinMode(moveOnOffPin, OUTPUT);
+
+    /* Configure pin 20 as input listening if camera is acquiring */
+    pinMode(cameraReadyPin, INPUT);
+
+    /* Configure pin 3 as output: TRUE reverse, FALSE forward */
+    pinMode(reverseDirPin, OUTPUT);
+    pinMode(A15, OUTPUT);
+}
+void resetDAC()
+{
+    /* Initialize the DAC */
+    digitalWrite(dac7741_RW, 0);      // keep 0 to write into the DAC
+    digitalWrite(dac7741_RSTSEL, 1);  // keep 1 to reset the DAC to midscale
+    digitalWrite(dac7741_RST, 0);     // go to zero to reset the DAC
+    digitalWrite(dac7741_RST, 1);     // keep 1 to resume operation
+}
+void moveY(unsigned int pos)
+{
+    PORTA=lowByte(pos);
+    PORTC=highByte(pos);
+    PORTL=B10101111;        // CS one  and A0,A1,A2 = 010  W27.1
+    PORTL=B00101111;        // CS zero and A0,A1,A2 = 010  W27.1
+    PORTL=B11111110;
+    PORTL=B11111111;
+}
+void moveZ(unsigned int pos)
+{
+    PORTA=lowByte(pos);
+    PORTC=highByte(pos);
+    PORTL=B11101111;        // CS one  and A0,A1,A2 = 110  W12.3
+    PORTL=B01101111;        // CS zero and A0,A1,A2 = 110  W12.3
+    PORTL=B11111110;
+    PORTL=B11111111;
+}
+void timerstop()
+{
+    TIMSK2 &= ~(1<<TOIE2);   /* First disable the timer overflow interrup */
+    TCNT2 = tcnt2;   /* Reload the timer */
+
+    digitalWrite(moveOnOffPin, 0); /* Tell other Arduino that scanning is over */
+    X = 0;
+    Y = 0;
+    Z = 0;
+    dX = 1;
+    dY = 1;
+}
+void stopRun()
+{
+    timerstop();
+    resetDAC();     /* Reset the DAC to initial position */
+}
+void endBeep()
+{
+    /* Sound the beeper to tell that scanning finishes */
+    for(i=0; i<800; i++){
+      digitalWrite(piezo, 1);
+      delayMicroseconds(125);
+      digitalWrite(piezo, 0);
+      delayMicroseconds(125);
+    }
+    delay(100);
+    for(i=0; i<800; i++){
+      digitalWrite(piezo, 1);
+      delayMicroseconds(160);
+      digitalWrite(piezo, 0);
+      delayMicroseconds(160);
+    }
+}
+void incrementZ()
+{
+    Z = Z + 1;
+    if (Z % 2)
+      digitalWrite(A15, LOW);
+    else
+      digitalWrite(A15, HIGH);
+
+    if (Z==__wavepointsZ__){
+      stopRun();
+      endBeep();
+    }
+}
+
+void incrementY()
+{
+    Y = Y + dY;              // increment to the next Y
+    if (dY==0){
+      incrementZ();
+      Zpos = wavetableZ[Z];
+      moveZ(Zpos);
+    }
+    if (Y==__wavepointsY__){
+      dY = dY - 1;
+    }
+    if (Y==0){
+      dY = dY + 1;
+    }
+    if (Y % 2){
+      digitalWrite(A14, LOW);
+    }
+    else{
+      digitalWrite(A14, HIGH);
+    }
+}
+
+void incrementX()
+{
+    X = X + dX;              // increment to the next X
+    if (dX==0){
+      incrementY();
+      Ypos = wavetableY[Y];
+      moveY(Ypos);
+    }
+    if (X==__wavepointsX__){
+      digitalWrite(reverseDirPin, HIGH);
+      dX = dX - 1;
+    }
+    if (X==0){
+      digitalWrite(reverseDirPin, LOW);
+      dX = dX + 1;
+    }
+}
+
+void timersetup()
+{
+    /* First disable the timer overflow interrupt while we're configuring */
+    TIMSK2 &= ~(1<<TOIE2);
+
+    /* Tell other Arduino that we are moving up */
+    digitalWrite(reverseDirPin, LOW);
+
+    /* Sound the beeper to tell that scanning starts */
+    for(i=0; i<800; i++)
+    {
+      digitalWrite(piezo, 1);
+      delayMicroseconds(125);
+      digitalWrite(piezo, 0);
+      delayMicroseconds(125);
+    }
+
+    /* The timer/counter A has two control registers TCCR2A and TCCR2B for configuration */
+    /* Configure timer2 in normal mode (pure counting, no PWM etc.) */
+    TCCR2A &= ~((1<<WGM21) | (1<<WGM20));  // puts zeros in WGM20 and WGM21
+    TCCR2B &= ~(1<<WGM22);                 // puts zeros in WGM22
+
+    /* Select clock source: internal I/O clock */
+    ASSR &= ~(1<<AS2);
+
+    /* Disable Compare Match A interrupt enable (only want overflow) */
+    TIMSK2 &= ~(1<<OCIE2A);
+
+    /* Now configure the prescaler to CPU clock divided by 8
+     * The register values CS22, CS21 and CS20 are 0 1 0 */
+    TCCR2B |= (1<<CS21); // Set bits
+    TCCR2B &= ~((1<<CS22) | (1<<CS20));             // Clear bit
+
+    /* We need to calculate a proper value to load the timer counter.
+     * The following loads the value 131 into the Timer 2 counter register
+     * The math behind this is:
+     * (CPU frequency) / (prescaler value) = 16MHz/8 = 2 MHz := 125ns.
+     * (desired period) / 125us = 120.
+     * MAX(uint8) + 1 - 120 = 136;
+     */
+
+    /* Save value globally for later reload in ISR */
+    //tcnt2 = 182;
+    //tcnt2 = 100;
+
+    /* Finally load end enable the timer */
+    TCNT2 = tcnt2;
+    TIMSK2 |= (1<<TOIE2);
+}
+ISR(TIMER2_OVF_vect)
+{
+    TCNT2 = tcnt2; // Reload the timer
+    Xpos = wavetableX[X];   // move the stage to the next X
+    moveX(Xpos);
+    incrementX();
+}
+void cameraReady(void)
+{
+    /* Interrupt issued by the camera
+       True when it is ready to acquire data
+       False when it is finished acquiring */
+    if (digitalRead(cameraReadyPin)){
+      X = 0; // Reset the waveform counters
+      Y = 0;
+      Z = 0;
+      dY = 1; // Make sure the scans starts in the right direction
+      dX = 1;
+      Xpos = wavetableX[X]; // Get to the initial position
+      Ypos = wavetableY[Y];
+      Zpos = wavetableZ[Z];
+      moveX(Xpos);    // Go to the starting X position
+      moveY(Ypos);    // Go to the starting Y position
+      moveZ(Zpos);    // Go to the starting Z position
+      digitalWrite(moveOnOffPin, 0);  // Tell other Arduino that scanning stopped
+      digitalWrite(reverseDirPin, 1); // Tell other Arduino that a new line will start
+      for(i=0; i<2000; i++)
+        delayMicroseconds(500);
+      digitalWrite(moveOnOffPin, 1);  // Tell other Arduino that scanning is started
+      timersetup();
+    }
+    else
+      stopRun();
+}
+void setup()
+{
+    ioinit();
+    resetDAC();
+    stopRun();
+    attachInterrupt(cameraReadyInt, cameraReady, CHANGE);
+}
+void loop() { }
+```
+</script></section>
+<section data-markdown><script type="text/template">
+## File: wavetable.h
+```C
+// Define the Y waveform
+unsigned int wavetableY[]={32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768,32768};
+// Define the Z waveform
+unsigned int wavetableZ[]={32769,};
+// Define the X waveform
+unsigned int wavetableX[]={24823,24823,24823,24823,24824,24824,24825,24826,24827,24828,24830,24831,24832,24834,24836,24838,24840,24842,24845,24847,24850,24852,24855,24858,24861,24865,24868,24872,24875,24879,24883,24887,24891,24896,24900,24905,24910,24915,24920,24925,24930,24935,24941,24947,24952,24958,24965,24971,24977,24984,24990,24997,25004,25011,25018,25025,25033,25040,25048,25055,25063,25071,25080,25088,25096,25105,25114,25122,25131,25140,25150,25159,25168,25178,25188,25198,25208,25218,25228,25238,25249,25259,25270,25281,25292,25303,25314,25326,25337,25349,25361,25373,25385,25397,25409,25421,25434,25446,25459,25472,25485,25498,25511,25525,25538,25552,25566,25580,25593,25608,25622,25636,25651,25665,25680,25695,25710,25725,25740,25755,25771,25786,25802,25818,25833,25849,25866,25882,25898,25915,25931,25948,25965,25982,25999,26016,26033,26051,26068,26086,26103,26121,26139,26157,26175,26194,26212,26231,26249,26268,26287,26306,26325,26344,26363,26383,26402,26422,26442,26461,26481,26501,26521,26542,26562,26582,26603,26624,26644,26665,26686,26707,26729,26750,26771,26793,26814,26836,26858,26880,26902,26924,26946,26968,26991,27013,27036,27058,27081,27104,27127,27150,27173,27196,27220,27243,27267,27290,27314,27338,27362,27386,27410,27434,27458,27482,27507,27531,27556,27581,27606,27630,27655,27680,27706,27731,27756,27781,27807,27833,27858,27884,27910,27936,27962,27988,28014,28040,28066,28093,28119,28146,28172,28199,28226,28253,28279,28306,28334,28361,28388,28415,28443,28470,28498,28525,28553,28580,28608,28636,28664,28692,28720,28748,28777,28805,28833,28862,28890,28919,28947,28976,29005,29033,29062,29091,29120,29149,29178,29208,29237,29266,29295,29325,29354,29384,29413,29443,29473,29503,29532,29562,29592,29622,29652,29682,29712,29743,29773,29803,29833,29864,29894,29925,29955,29986,30016,30047,30078,30109,30139,30170,30201,30232,30263,30294,30325,30356,30387,30419,30450,30481,30512,30544,30575,30607,30638,30670,30701,30733,30764,30796,30828,30859,30891,30923,30955,30986,31018,31050,31082,31114,31146,31178,31210,31242,31274,31306,31338,31370,31403,31435,31467,31499,31532,31564,31596,31628,31661,31693,31726,31758,31790,31823,31855,31888,31920,31953,31985,32018,32050,32083,32115,32148,32180,32213,32246,32278,32311,32343,32376,32409,32441,32474,32507,32539,32572,32605,32637,32670,32703,32735,32768,32801,32833,32866,32899,32931,32964,32997,33029,33062,33095,33127,33160,33193,33225,33258,33290,33323,33356,33388,33421,33453,33486,33518,33551,33583,33616,33648,33681,33713,33746,33778,33810,33843,33875,33908,33940,33972,34004,34037,34069,34101,34133,34166,34198,34230,34262,34294,34326,34358,34390,34422,34454,34486,34518,34550,34581,34613,34645,34677,34708,34740,34772,34803,34835,34866,34898,34929,34961,34992,35024,35055,35086,35117,35149,35180,35211,35242,35273,35304,35335,35366,35397,35427,35458,35489,35520,35550,35581,35611,35642,35672,35703,35733,35763,35793,35824,35854,35884,35914,35944,35974,36004,36033,36063,36093,36123,36152,36182,36211,36241,36270,36299,36328,36358,36387,36416,36445,36474,36503,36531,36560,36589,36617,36646,36674,36703,36731,36759,36788,36816,36844,36872,36900,36928,36956,36983,37011,37038,37066,37093,37121,37148,37175,37202,37230,37257,37283,37310,37337,37364,37390,37417,37443,37470,37496,37522,37548,37574,37600,37626,37652,37678,37703,37729,37755,37780,37805,37830,37856,37881,37906,37930,37955,37980,38005,38029,38054,38078,38102,38126,38150,38174,38198,38222,38246,38269,38293,38316,38340,38363,38386,38409,38432,38455,38478,38500,38523,38545,38568,38590,38612,38634,38656,38678,38700,38722,38743,38765,38786,38807,38829,38850,38871,38892,38912,38933,38954,38974,38994,39015,39035,39055,39075,39094,39114,39134,39153,39173,39192,39211,39230,39249,39268,39287,39305,39324,39342,39361,39379,39397,39415,39433,39450,39468,39485,39503,39520,39537,39554,39571,39588,39605,39621,39638,39654,39670,39687,39703,39718,39734,39750,39765,39781,39796,39811,39826,39841,39856,39871,39885,39900,39914,39928,39943,39956,39970,39984,39998,40011,40025,40038,40051,40064,40077,40090,40102,40115,40127,40139,40151,40163,40175,40187,40199,40210,40222,40233,40244,40255,40266,40277,40287,40298,40308,40318,40328,40338,40348,40358,40368,40377,40386,40396,40405,40414,40422,40431,40440,40448,40456,40465,40473,40481,40488,40496,40503,40511,40518,40525,40532,40539,40546,40552,40559,40565,40571,40578,40584,40589,40595,40601,40606,40611,40616,40621,40626,40631,40636,40640,40645,40649,40653,40657,40661,40664,40668,40671,40675,40678,40681,40684,40686,40689,40691,40694,40696,40698,40700,40702,40704,40705,40706,40708,40709,40710,40711,40712,40712,40713,40713,40713};
+// Specify the number of entries in the X wavetable less one
+#define __wavepointsX__ 763
+// Specify the number of entries in the Y wavetable less one
+#define __wavepointsY__ 99
+// Specify the number of entries in the Z wavetable less one
+#define __wavepointsZ__ 1
+
+byte stopY[] = {2, 2};         // How many X scans to remain on Y turn position
+                               // {2, 2} for bidirectional scan
+                               // {3, 1} for single directional scan
+```
+</script></section>
+</section>
+<section>
+<section data-markdown><script type="text/template">
+# Tips (1/2)
+- think hard before buying a device
+    - if you want to be fast, make sure there are enough ports, e.g. trigger-in and ready-out
+    - did someone else do something similar, is there an Arduino library for an IC you could to use (my LED driver vs. Jakub's ADC)
+- is there an easier implementation?
+    - timers can turn ugly fast (you will have to read the AVR manuals and code will be much more difficult to maintain)
+- use comments to document tricks (e.g. sleep mode in my code)
+</script></section>
+<section data-markdown><script type="text/template">
+# Tips (2/2)
+- use Matlab to generate code (don't use "for"-loops in time-critical code)
+- get familiar with logic analyzer and oscilloscope
+- (look at disassembly)
+</script></section>
+</section>
+	<section>
+	  <h1>THE END</h1>
+	  <h3>BY Martin Kielhorn</h3>
+	</section>
+
+      </div>
+
+    </div>
+
+    <script src="lib/js/head.min.js"></script>
+    <script src="js/reveal.min.js"></script>
+
+    <script>
+
+      // Full list of configuration options available here:
+      // https://github.com/hakimel/reveal.js#configuration
+      Reveal.initialize({
+      controls: true,
+      progress: true,
+      history: true,
+      center: true,
+
+      theme: Reveal.getQueryHash().theme, // available themes are in /css/theme
+      transition: Reveal.getQueryHash().transition || 'default', // default/cube/page/concave/zoom/linear/fade/none
+
+      // Optional libraries used to extend on reveal.js
+      dependencies: [
+      { src: 'lib/js/classList.js', condition: function() { return !document.body.classList; } },
+      { src: 'plugin/markdown/marked.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+      { src: 'plugin/markdown/markdown.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+      { src: 'plugin/highlight/highlight.js', async: true, callback: function() { hljs.initHighlightingOnLoad(); } },
+      { src: 'plugin/zoom-js/zoom.js', async: true, condition: function() { return !!document.body.classList; } },
+      { src: 'plugin/notes/notes.js', async: true, condition: function() { return !!document.body.classList; } }
+      // { src: 'plugin/search/search.js', async: true, condition: function() { return !!document.body.classList; } }
+      // { src: 'plugin/remotes/remotes.js', async: true, condition: function() { return !!document.body.classList; } }
+      ]
+      });
+
+    </script>
+
+  </body>
+</html>
