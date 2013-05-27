@@ -1319,6 +1319,262 @@ done
 </section>
 
 <section data-markdown><script type="text/template">
+### Florian's C# GUI code
+
+- open serial connection and talk to Arduino
+
+```C
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Linq;
+using System.Text;
+using System.Windows.Forms;
+using System.IO.Ports;
+
+namespace WindowsFormsApplication1
+{
+    public partial class Form1 : Form
+    {
+        public Form1()
+        {
+            InitializeComponent();
+        }
+        private void button1_Click(object sender, EventArgs e)
+        {
+            serialPort1.Open();
+            serialPort1.Write(textBox1.Text + ','
+                            + textBox2.Text + ','
+                            + comboBox2 + ','
+                            + checkBox1);
+            serialPort1.Close();
+        }
+
+        private void Form1_Load(object sender, EventArgs e)
+        {
+            comboBox1.DataSource = SerialPort.GetPortNames();
+        }
+
+        private void button2_Click(object sender, EventArgs e)
+        {
+            serialPort1.PortName =
+               comboBox1.SelectedItem.ToString();
+        }
+
+        private void label4_Click(object sender, EventArgs e)
+        {
+        }
+
+        private void
+        checkBox1_CheckedChanged(object sender, EventArgs e)
+        {
+        }
+
+    }
+}
+```
+
+- my Unix code to talk to serial devices: [pifoc/serial.lisp](https://github.com/plops/pifoc/blob/master/pifoc/serial.lisp)
+
+- my libusb code to directly talk to USB devices: [cl-pl2303](https://github.com/plops/cl-pl2303)
+
+</script></section>
+
+<section data-markdown><script type="text/template">
+### Ronny's code to synchronize Orca 4.0 camera in pico sim
+```C
+  // define all global variables and pins HERE !!!
+  int ext=9;             // external trigger: high --> shutter opens; low --> shutter closes
+  int global=10;         // global exposure (shutter completly open)
+  int next=11;           // Trigger ready output; readout done - ready for next frame
+
+  int mindelay = 3;     // minimum delay for function delayMicroseconds (Rainer) VALUE NOT OPTIMIZED!?
+
+  int ledpin=13;
+
+
+  int frames = 3;                     // number of frames
+  unsigned int exposuretime = 5;      // exposure time per frame in ms
+  int unit = 1;                       // defines the unit of 'exposuretime'. 1 -> ms & 2->us
+  int globalexposureonly = 1;         // defines if the camera is always illuminated (0) or only during global exposure (1) (shutter open)
+
+
+void setup() {
+  // allocate names to pins on arduino
+  pinMode(ext, OUTPUT);      // output signal from arduino to camera to start next image acquisition
+  digitalWrite(ext,LOW);
+
+  pinMode(global, INPUT);   // input signal from the camera to the arduino in case of global exposure
+  pinMode(next, INPUT);     // input signal from the camera to the arduino in case of readout is done and cameras are ready for next image
+
+  pinMode(ledpin, OUTPUT);
+
+  // initialize serial communication:
+  Serial.begin(9600);
+}
+
+
+// MAIN LOOP
+void loop() {
+  // wait for signal from the computer
+  //Serial.print("wait for frame and time \n");
+
+  while (Serial.available() ==0){} // if there is any serial available, read it:
+  frames             = Serial.parseInt();
+  exposuretime       = Serial.parseInt();
+  unit               = Serial.parseInt();
+  globalexposureonly = Serial.parseInt();
+
+
+  // choose right loop depending on unit and globalexposureonly
+  if(unit == 1){
+    // exposuretime in ms --> use delay
+    if(globalexposureonly){
+      msglobalexposureonly();
+    }
+    else{
+      mspermanentexposure();
+    }
+  }
+  else if(unit == 2){
+    // exposuretime in µs --> use delayMicroseconds
+    if(globalexposureonly){
+      usglobalexposureonly();
+    }
+    else{
+      uspermanentexposure();
+    }
+  }
+  else{
+    adjustvoltagedivider();
+  }
+
+  //Serial.print("image acquisition completed \n");
+
+}
+
+
+//exposure time in ms and using global exposure
+void msglobalexposureonly(){
+   for(int i = 0; i < frames; i++){     // take number of frames
+    digitalWrite(ext,HIGH);
+
+    // shutter is opening, now
+    // a little bit time is needed to open the shutter
+    // time to start noInterrupts()
+
+    while(digitalRead(global)==LOW){  // wait for global exposure
+      delayMicroseconds(mindelay);
+    }
+    digitalWrite(ledpin, HIGH);
+    //global exposure is high, now
+    //AOTF switched on automatically
+
+    delay(exposuretime);      // stay in this state - just exposure
+                              // risetime of the AOTF neglected for simplicity
+
+
+    digitalWrite(ext, LOW);
+    // closing shutter now and readout
+    // global exposure stops (low)
+    // AOTF switched off automatically
+    // RISETIME AOTF AGAIN NEGLECTED - UPPER LINES MIGHT BE ILLUMINATED DURING READOUT
+
+
+
+
+    while(digitalRead(next)==LOW){  // wait for finished read out, to acquire next frame
+      delayMicroseconds(mindelay);
+    }
+
+  }
+
+}
+
+//exposure time in ms and exposure sample also during shutter opening/closing procedure
+void mspermanentexposure(){
+   for(int i = 0; i < frames; i++){
+
+    digitalWrite(ext,HIGH);
+    //Laser is always on
+    //start illuminating
+
+    delay(exposuretime);
+
+    digitalWrite(ext, LOW);
+    //stop illuminating
+
+
+    while(digitalRead(next)==LOW){delayMicroseconds(mindelay);}
+
+  }
+}
+
+
+
+
+//exposure time in µs and using global exposure
+void usglobalexposureonly(){
+   for(int i = 0; i < frames; i++){
+    digitalWrite(ext,HIGH);
+
+    while(digitalRead(global)==LOW){delayMicroseconds(mindelay);}
+
+    delayMicroseconds(exposuretime);
+    //(if exposure time is in the region of mindelay - the real exposuretime might be influenced significantly)
+
+    digitalWrite(ext, LOW);
+
+    while(digitalRead(next)==LOW){delayMicroseconds(mindelay);}
+
+  }
+}
+
+
+
+//exposure time in µs and exposure sample also during shutter opening/closing procedure
+void uspermanentexposure(){
+   for(int i = 0; i < frames; i++){
+    digitalWrite(ext,HIGH);
+    //Laser is always on
+    //start illuminating
+
+    delayMicroseconds(exposuretime);
+
+    digitalWrite(ext, LOW);
+    //stop illuminating
+
+    while(digitalRead(next)==LOW){delayMicroseconds(mindelay);}
+
+  }
+}
+
+
+
+//blinking of the external trigger channel to adjust the voltage divider
+void adjustvoltagedivider(){
+  int stopvariable = 0; //has to be set 4 that the loop stops
+
+  while(stopvariable != 4){
+    digitalWrite(ext,HIGH);
+    delay(50);
+    digitalWrite(ext,LOW);
+    delay(50);
+
+    //look for new input at the serial port
+    if (Serial.available() != 0){
+      stopvariable = Serial.parseInt();  // incoming data should be a 4
+    }
+  }
+}
+```
+</script></section>
+
+
+
+<section data-markdown><script type="text/template">
 # Tips (1/2)
 - think hard before buying a device
     - if you want to be fast, make sure there are enough ports, e.g. trigger-in and ready-out
